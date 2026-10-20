@@ -37,6 +37,20 @@ public class StockLevel {
         return onHand - reserved;
     }
 
+    public void reserve(int qty) {
+        if (qty > available()) {
+            throw new BusinessRuleException("Insufficient stock on row" + id);
+        }
+        reserved += qty;
+    }
+
+    public void release(int qty) {
+        if (qty > reserved){
+            throw new IllegalStateException("Releasing" + qty + "but only" + reserved + "reserved om row" + id);
+        }
+        reserved -= qty;
+    }
+
     public void setOnHand(int newOnHand) {
         if (newOnHand < reserved) {
             throw new BusinessRuleException(

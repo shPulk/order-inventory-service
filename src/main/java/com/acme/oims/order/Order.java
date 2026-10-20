@@ -58,6 +58,10 @@ public class Order {
         lines.add(new OrderLine(this, productId, quantity, unitPrice));
     }
 
+    public void setExpiresAt(Instant expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
     public Long getId() {
         return id;
     }

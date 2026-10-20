@@ -41,7 +41,7 @@ class OrderApiTest {
                         .header("Idempotency-Key", "create-7")
                         .content(body(productId(), 2)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("CREATED"))
+                .andExpect(jsonPath("$.status").value("RESERVED"))
                 .andExpect(jsonPath("$.lines[0].quantity").value(2))
                 .andExpect(jsonPath("$.total").value(19.98));
     }
@@ -116,7 +116,7 @@ class OrderApiTest {
 
         mvc.perform(post("/api/orders/" + id + "/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"target\":\"PAID\"}")) // CREATED -> PAID is illegal
+                        .content("{\"target\":\"SHIPPED\"}")) // RESERVED -> SHIPPED is illegal
                 .andExpect(status().isConflict());
     }
 
@@ -124,5 +124,15 @@ class OrderApiTest {
     void missingOrderReturns404() throws Exception {
         mvc.perform(get("/api/orders/987654"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void placesOrderWithPriceSnapShot() throws Exception {
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
+                .content(body(productId(), 2)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("RESERVED"))
+                .andExpect(jsonPath("$.lines[0].unitPrice").value(9.99))
+                .andExpect(jsonPath("$.total").value(19.98));
     }
 }

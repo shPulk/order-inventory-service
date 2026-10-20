@@ -4,28 +4,108 @@ import com.acme.oims.catalog.Product;
 import com.acme.oims.catalog.ProductRepository;
 import com.acme.oims.common.BusinessRuleException;
 import com.acme.oims.common.NotFoundException;
+import com.acme.oims.inventory.ReservationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
 
-    public record PlacementResult(OrderResponse order, boolean created) {}
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+    public record PlacementResult(
+            OrderResponse order,
+            boolean created,
+            List<Long> shortProducts
+    ) {
+    }
 
     private final OrderRepository orders;
     private final ProductRepository products;
+    private final ReservationService reservations;
+    private final TransactionTemplate tx;
+    private final Duration ttl;
+    private final int maxAttempts;
 
-    public OrderService(OrderRepository orders, ProductRepository products) {
+    public OrderService(
+            OrderRepository orders,
+            ProductRepository products,
+            ReservationService reservations,
+            PlatformTransactionManager txManager,
+            @Value("${oims.reservation.ttl-minutes:15}") long ttlMinutes,
+            @Value("${oims.reservation.strategy:pessimistic}") String strategy,
+            @Value("${oims.reservation.max-attempts:5}") int optimisticAttempts
+    ) {
         this.orders = orders;
         this.products = products;
+        this.reservations = reservations;
+        this.tx = new TransactionTemplate(txManager);
+        this.ttl = Duration.ofMinutes(ttlMinutes);
+
+        // pessimistic locking waits instead of failing, so it never needs a retry loop
+        this.maxAttempts = "optimistic".equalsIgnoreCase(strategy)
+                ? optimisticAttempts
+                : 1;
     }
 
-    @Transactional
     public PlacementResult place(CreateOrderRequest req, String idempotencyKey) {
+        PlacementResult result = placeWithRetry(req, idempotencyKey);
+
+        if (result.created() && !result.shortProducts().isEmpty()) {
+            // thrown AFTER commit, so the FAILED order is kept
+            throw new InsufficientStockException(
+                    result.order().id(),
+                    result.shortProducts()
+            );
+        }
+
+        return result;
+    }
+
+    private PlacementResult placeWithRetry(
+            CreateOrderRequest req,
+            String idempotencyKey
+    ) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return tx.execute(status -> placeOnce(req, idempotencyKey));
+            } catch (ConcurrencyFailureException e) {
+                if (attempt >= maxAttempts) {
+                    log.warn(
+                            "Stock update conflict, giving up after {} attempts",
+                            attempt
+                    );
+                    throw e;
+                }
+
+                log.debug(
+                        "Stock update conflict, retry {}/{}",
+                        attempt,
+                        maxAttempts
+                );
+
+                backoff();
+            }
+        }
+    }
+
+    private PlacementResult placeOnce(
+            CreateOrderRequest req,
+            String idempotencyKey
+    ) {
         String key = (idempotencyKey == null || idempotencyKey.isBlank())
                 ? null
                 : idempotencyKey.trim();
@@ -48,7 +128,8 @@ public class OrderService {
 
                 return new PlacementResult(
                         OrderResponse.from(existing.get()),
-                        false
+                        false,
+                        List.of()
                 );
             }
         }
@@ -82,7 +163,6 @@ public class OrderService {
         Order order = new Order(req.customerId(), key);
 
         for (var line : req.lines()) {
-            // price snapshot; later catalog price changes must not alter existing orders
             order.addLine(
                     line.productId(),
                     line.quantity(),
@@ -90,9 +170,31 @@ public class OrderService {
             );
         }
 
+        order = orders.save(order);
+
+        List<ReservationService.Demand> demands = req.lines().stream()
+                .map(l -> new ReservationService.Demand(
+                        l.productId(),
+                        l.quantity()
+                ))
+                .toList();
+
+        List<Long> shortfalls = reservations.reserveAll(
+                order.getId(),
+                demands
+        );
+
+        if (shortfalls.isEmpty()) {
+            order.transitionTo(OrderStatus.RESERVED);
+            order.setExpiresAt(Instant.now().plus(ttl));
+        } else {
+            order.transitionTo(OrderStatus.FAILED);
+        }
+
         return new PlacementResult(
-                OrderResponse.from(orders.save(order)),
-                true
+                OrderResponse.from(order),
+                true,
+                shortfalls
         );
     }
 
@@ -104,14 +206,19 @@ public class OrderService {
     @Transactional
     public OrderResponse transition(Long id, OrderStatus target) {
         if (target == OrderStatus.CANCELLED) {
-            // cancellation must release stock, so it gets its own flow (Day 2)
             throw new BusinessRuleException(
                     "Use the cancel endpoint to cancel an order"
             );
         }
 
+        if (target == OrderStatus.RESERVED) {
+            throw new BusinessRuleException(
+                    "RESERVED is set only by the reservation engine"
+            );
+        }
+
         Order order = find(id);
-        order.transitionTo(target); // throws IllegalTransitionException -> 409
+        order.transitionTo(target);
 
         return OrderResponse.from(order);
     }
@@ -119,7 +226,22 @@ public class OrderService {
     private Order find(Long id) {
         return orders.findById(id)
                 .orElseThrow(() ->
-                        new NotFoundException("Order " + id + " not found"));
+                        new NotFoundException(
+                                "Order " + id + " not found"
+                        ));
     }
 
+    private static void backoff() {
+        try {
+            Thread.sleep(
+                    ThreadLocalRandom.current().nextLong(5, 30)
+            );
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted while retrying",
+                    e
+            );
+        }
+    }
 }
