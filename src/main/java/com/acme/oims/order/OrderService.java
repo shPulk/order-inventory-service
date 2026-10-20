@@ -217,9 +217,13 @@ public class OrderService {
             );
         }
 
-        Order order = find(id);
+        Order order = orders.findByIdForUpdate(id)
+                .orElseThrow(()-> new NotFoundException("Order" + id + "not found"));
+        if (target == OrderStatus.PAID && order.getStatus() == OrderStatus.RESERVED
+                && order.getExpiresAt() != null && order.getExpiresAt().isBefore(Instant.now())) {
+            throw new BusinessRuleException("Reservation expired, place a new order");
+        }
         order.transitionTo(target);
-
         return OrderResponse.from(order);
     }
 

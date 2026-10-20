@@ -14,9 +14,11 @@ public class OrderController {
     public record StatusChangeRequest(@NotNull OrderStatus target) {}
 
     private final OrderService service;
+    private final OrderCancellationService cancellations;
 
-    public OrderController(OrderService service) {
+    public OrderController(OrderService service, OrderCancellationService cancellations) {
         this.service = service;
+        this.cancellations = cancellations;
     }
 
     @PostMapping
@@ -28,7 +30,7 @@ public class OrderController {
         var result = service.place(req, idempotencyKey);
 
         if (!result.created()) {
-            return ResponseEntity.ok(result.order()); // replay of an earlier request
+            return ResponseEntity.ok(result.order());
         }
 
         return ResponseEntity
@@ -47,5 +49,10 @@ public class OrderController {
             @Valid @RequestBody StatusChangeRequest req) {
 
         return service.transition(id, req.target());
+    }
+
+    @PostMapping("/{id}/cancel")
+    OrderResponse cancel(@PathVariable Long id) {
+        return cancellations.cancel(id);
     }
 }
