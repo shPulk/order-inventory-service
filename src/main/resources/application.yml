@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:file:./data/oims;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:file:./data/oims;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000
     username: sa
     password:
 
@@ -22,3 +22,10 @@ management:
     web:
       exposure:
         include: health,info,metrics
+
+oims:
+  reservation:
+    strategy: pessimistic
+    ttl-minutes: 15
+    max-attempts: 5
+    expiry-check-ms: 30000
