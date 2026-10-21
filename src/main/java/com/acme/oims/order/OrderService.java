@@ -36,6 +36,7 @@ public class OrderService {
     private final OrderRepository orders;
     private final ProductRepository products;
     private final ReservationService reservations;
+    private final OrderEvents events;
     private final TransactionTemplate tx;
     private final Duration ttl;
     private final int maxAttempts;
@@ -44,6 +45,7 @@ public class OrderService {
             OrderRepository orders,
             ProductRepository products,
             ReservationService reservations,
+            OrderEvents events,
             PlatformTransactionManager txManager,
             @Value("${oims.reservation.ttl-minutes:15}") long ttlMinutes,
             @Value("${oims.reservation.strategy:pessimistic}") String strategy,
@@ -52,6 +54,7 @@ public class OrderService {
         this.orders = orders;
         this.products = products;
         this.reservations = reservations;
+        this.events = events;
         this.tx = new TransactionTemplate(txManager);
         this.ttl = Duration.ofMinutes(ttlMinutes);
 
@@ -187,15 +190,13 @@ public class OrderService {
         if (shortfalls.isEmpty()) {
             order.transitionTo(OrderStatus.RESERVED);
             order.setExpiresAt(Instant.now().plus(ttl));
+            events.emit("OrderReserved", order, null);
         } else {
             order.transitionTo(OrderStatus.FAILED);
+            events.emit("OrderFailed", order, "INSUFFICIENT_STOCK");
         }
 
-        return new PlacementResult(
-                OrderResponse.from(order),
-                true,
-                shortfalls
-        );
+        return new PlacementResult(OrderResponse.from(order), true, shortfalls);
     }
 
     @Transactional(readOnly = true)
@@ -224,7 +225,18 @@ public class OrderService {
             throw new BusinessRuleException("Reservation expired, place a new order");
         }
         order.transitionTo(target);
+        events.emit(eventTypeFor(target), order, null);
         return OrderResponse.from(order);
+    }
+
+    private static String eventTypeFor(OrderStatus s) {
+        return switch (s) {
+            case PAID -> "OrderPaid";
+            case SHIPPED -> "OrderShipped";
+            case DELIVERED -> "OrderDelivered";
+            case FAILED -> "OrderFailed";
+            default -> "OrderStatusChanged";
+        };
     }
 
     private Order find(Long id) {

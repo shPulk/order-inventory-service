@@ -16,11 +16,13 @@ import java.util.stream.Collectors;
 public class OrderCancellationService {
 
     private final OrderRepository orders;
+    private final OrderEvents events;
     private final ReservationRepository reservations;
     private final StockLevelRepository stock;
 
-    public OrderCancellationService(OrderRepository orders, ReservationRepository reservations, StockLevelRepository stock) {
+    public OrderCancellationService(OrderRepository orders, OrderEvents events, ReservationRepository reservations, StockLevelRepository stock) {
         this.orders = orders;
+        this.events = events;
         this.reservations = reservations;
         this.stock = stock;
     }
@@ -33,11 +35,11 @@ public class OrderCancellationService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             return OrderResponse.from(order);
         }
-        cancelLocked(order);  // illegal status (SHIPPED, DELIVERED, FAILED)
+        cancelLocked(order, "CUSTOMER");  // illegal status (SHIPPED, DELIVERED, FAILED)
         return OrderResponse.from(order);
     }
 
-    /** Returns true only if THIS call epired the order. Re-checks under the row lock. */
+    /** Returns true only if THIS call expired the order. Re-checks under the row lock. */
     @Transactional
     public boolean expire(Long id, Instant now) {
         Order order = orders.findByIdForUpdate(id).orElse(null);
@@ -47,13 +49,14 @@ public class OrderCancellationService {
                 || !order.getExpiresAt().isBefore(now)) {
             return false;     // paid, canceled, or handled by another instance
         }
-        cancelLocked(order);
+        cancelLocked(order, "EXPIRED");
         return true;
     }
 
     /** Caller must hold the order row lock. */
-    private void cancelLocked(Order order) {
+    private void cancelLocked(Order order, String reason) {
         order.transitionTo(OrderStatus.CANCELLED);
+        events.emit("OrderCancelled", order, reason);
         List<Reservation> active = reservations.findByOrderIdAndStatus(order.getId(), ReservationStatus.ACTIVE);
         if (active.isEmpty()) {
             return;
