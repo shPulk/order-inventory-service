@@ -29,3 +29,7 @@ oims:
     ttl-minutes: 15
     max-attempts: 5
     expiry-check-ms: 30000
+
+  security:
+   jwt-secret: ${OIMS_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+   dev-tokens: true
