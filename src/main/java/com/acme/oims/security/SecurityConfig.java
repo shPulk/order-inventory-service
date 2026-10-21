@@ -40,6 +40,9 @@ public class SecurityConfig {
                                 AntPathRequestMatcher.antMatcher("/actuator/health/**")
                         ).permitAll()
                         .requestMatchers(
+                                AntPathRequestMatcher.antMatcher("/actuator/metrics/**")
+                        ).permitAll()
+                        .requestMatchers(
                                 AntPathRequestMatcher.antMatcher("/actuator/info")
                         ).permitAll()
                         .requestMatchers(

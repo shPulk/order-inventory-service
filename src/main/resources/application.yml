@@ -3,6 +3,8 @@ spring:
     url: jdbc:h2:file:./data/oims;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000
     username: sa
     password:
+    hikari:
+      maximum-pool-size: ${DB_POOL:30}
 
   jpa:
     hibernate:
