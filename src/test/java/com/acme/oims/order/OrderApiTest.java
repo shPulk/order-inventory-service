@@ -1,4 +1,4 @@
-package com.acme.oims;
+package com.acme.oims.order;
 
 import com.acme.oims.catalog.ProductRepository;
 import com.jayway.jsonpath.JsonPath;
@@ -7,14 +7,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.UUID;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:oims_api_test;DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties =
+        "spring.datasource.url=jdbc:h2:mem:oims_api_test;DB_CLOSE_DELAY=-1")
 @AutoConfigureMockMvc
 class OrderApiTest {
 
@@ -24,35 +30,51 @@ class OrderApiTest {
     @Autowired
     ProductRepository products;
 
-    private Long productId() {
-        return products.findBySku("SKU-001").orElseThrow().getId();
+    private RequestPostProcessor customer() {
+        return jwt().jwt(j -> j.subject("cust-1"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_CUSTOMER")
+                );
     }
 
-    private String body(Long productId, int qty) {
+    private RequestPostProcessor ops() {
+        return jwt().jwt(j -> j.subject("ops-1"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_WAREHOUSE_OPS")
+                );
+    }
+
+    private long productId() {
+        return products.findBySku("SKU-001")
+                .orElseThrow()
+                .getId();
+    }
+
+    private String body(long productId, int qty) {
         return """
-                {"customerId":"cust-1","lines":[{"productId":%d,"quantity":%d}]}
+                {"lines":[{"productId":%d,"quantity":%d}]}
                 """.formatted(productId, qty);
     }
 
     @Test
-    void placeOrderWithIdempotency() throws Exception {
+    void placesOrderWithPriceSnapshot() throws Exception {
         mvc.perform(post("/api/orders")
+                        .with(customer())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .header("Idempotency-Key", "create-7")
                         .content(body(productId(), 2)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVED"))
-                .andExpect(jsonPath("$.lines[0].quantity").value(2))
+                .andExpect(jsonPath("$.customerId").value("cust-1"))
+                .andExpect(jsonPath("$.lines[0].unitPrice").value(9.99))
                 .andExpect(jsonPath("$.total").value(19.98));
     }
 
     @Test
     void emptyLinesReturns400() throws Exception {
         mvc.perform(post("/api/orders")
+                        .with(customer())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"customerId":"c","lines":[]}
-                                """))
+                        .content("{\"lines\":[]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.lines").exists());
     }
@@ -60,8 +82,9 @@ class OrderApiTest {
     @Test
     void unknownProductReturns422() throws Exception {
         mvc.perform(post("/api/orders")
+                        .with(customer())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(999999L, 1)))
+                        .content(body(999999, 1)))
                 .andExpect(status().isUnprocessableEntity());
     }
 
@@ -70,13 +93,14 @@ class OrderApiTest {
         long p = productId();
 
         mvc.perform(post("/api/orders")
+                        .with(customer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"customerId":"c","lines":[
-                                {"productId":%d,"quantity":1},
-                                {"productId":%d,"quantity":2}
-                            ]}
-                            """.formatted(p, p)))
+                                {"lines":[
+                                    {"productId":%d,"quantity":1},
+                                    {"productId":%d,"quantity":2}
+                                ]}
+                                """.formatted(p, p)))
                 .andExpect(status().isUnprocessableEntity());
     }
 
@@ -85,9 +109,10 @@ class OrderApiTest {
         String key = UUID.randomUUID().toString();
 
         String first = mvc.perform(post("/api/orders")
+                        .with(customer())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(productId(), 3)))
+                        .content(body(productId(), 1)))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
@@ -96,9 +121,10 @@ class OrderApiTest {
         Integer id = JsonPath.read(first, "$.id");
 
         mvc.perform(post("/api/orders")
+                        .with(customer())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(productId(), 3)))
+                        .content(body(productId(), 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id));
     }
@@ -106,6 +132,7 @@ class OrderApiTest {
     @Test
     void illegalTransitionReturns409() throws Exception {
         String created = mvc.perform(post("/api/orders")
+                        .with(customer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(productId(), 1)))
                 .andReturn()
@@ -115,6 +142,7 @@ class OrderApiTest {
         Integer id = JsonPath.read(created, "$.id");
 
         mvc.perform(post("/api/orders/" + id + "/status")
+                        .with(ops())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target\":\"SHIPPED\"}")) // RESERVED -> SHIPPED is illegal
                 .andExpect(status().isConflict());
@@ -122,17 +150,6 @@ class OrderApiTest {
 
     @Test
     void missingOrderReturns404() throws Exception {
-        mvc.perform(get("/api/orders/987654"))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void placesOrderWithPriceSnapShot() throws Exception {
-        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
-                .content(body(productId(), 2)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("RESERVED"))
-                .andExpect(jsonPath("$.lines[0].unitPrice").value(9.99))
-                .andExpect(jsonPath("$.total").value(19.98));
+        mvc.perform(get("/api/orders/987654").with(customer())).andExpect(status().isNotFound());
     }
 }

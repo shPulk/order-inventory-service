@@ -1,8 +1,5 @@
-package com.acme.oims;
+package com.acme.oims.order;
 
-import com.acme.oims.order.IllegalTransitionException;
-import com.acme.oims.order.Order;
-import com.acme.oims.order.OrderStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
