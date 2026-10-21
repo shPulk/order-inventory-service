@@ -57,5 +57,6 @@ CREATE TABLE IF NOT EXISTS reservation (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL
                              );
 
-CREATE INDEX IF NOT EXISTS idx_res_order
-    ON reservation(order_id);
+CREATE INDEX IF NOT EXISTS idx_res_order ON reservation(order_id);
+
+CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at);
