@@ -17,8 +17,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest(properties =
-        "spring.datasource.url=jdbc:h2:mem:oims_events_test;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000")
+@SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:h2:mem:oims_events_test;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
+        "oims.events.async=false"})
 class EventsTest {
 
     @Autowired
