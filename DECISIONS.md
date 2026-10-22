@@ -51,3 +51,5 @@ Status: Accepted | Proposed. Format: decision, why, cost.
 - No `GET /api/orders` ("my orders") listing.
 - H2 console, Swagger and actuator health are open without a token.
 - **Item 9 fix is partial.** The first bottleneck is CPU per request (0% idle, app JVM ~660%). Raising the pool did not fix it. Not done: profiling (thread dumps or IntelliJ profiler) and reducing per-request work. Candidates, unmeasured: JWT signature validation per request, Hibernate flush/dirty checking, JSON serialisation, H2 in the same JVM.
+- **Concurrent retries with one Idempotency-Key can return an error.** In the drill, 19 of 20 simultaneous retries failed with 'DataIntegrityViolation' (409 to the client), one order was created and stock reserved once. 
+- - Fix designed: catch the violation and return the winner's order.
