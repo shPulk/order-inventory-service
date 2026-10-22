@@ -16,7 +16,7 @@ mvn spring-boot:run             # http://localhost:8080
 mvn clean test                  # full suite
 ```
 
-Reset data: stop the app, then `rm -rf data/`. Seed data (products SKU-001..003, warehouses WH-EAST and WH-WEST) is reloaded on startup.
+Reset data: stop the app, then `rm -rf data/`. Seed data (products SKU-001..003, warehouses WH-NORTH and WH-SOUTH) is reloaded on startup.
 
 | URL | Purpose |
 |---|---|

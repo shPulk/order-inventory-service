@@ -65,8 +65,8 @@ class OrderApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVED"))
                 .andExpect(jsonPath("$.customerId").value("cust-1"))
-                .andExpect(jsonPath("$.lines[0].unitPrice").value(9.99))
-                .andExpect(jsonPath("$.total").value(19.98));
+                .andExpect(jsonPath("$.lines[0].unitPrice").value(299.0))
+                .andExpect(jsonPath("$.total").value(598.0));
     }
 
     @Test
