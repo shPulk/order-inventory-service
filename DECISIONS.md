@@ -1,55 +1,45 @@
-# Decisions Log
-Status: Accepted | Proposed. Format: decision, why, cost.
+# Decisions log
+
+Format: decision, why, cons.
 
 ## Accepted
-- **D-001 Boot 3.5.x, not 4.x.** Brief says 3.x; Boot 4 has breaking changes. Cost: hand-built skeleton, local Maven.
-- **D-002 Schema in `schema.sql`, Hibernate `validate`.** Explicit, reviewable DB constraints (`reserved <= on_hand`). Cost: manual upkeep; Flyway in production.
-- **D-003 Transitions enforced in `Order.transitionTo()`** via a table in `OrderStatus`. Cannot be bypassed; unit-tested. Cost: no per-transition hooks.
-- **D-004 Timestamps are `TIMESTAMP WITH TIME ZONE`.** Hibernate 6 maps `Instant` to it; plain `TIMESTAMP` failed validation.
-- **D-005 Stock = `on_hand` + `reserved` counters plus reservation rows.** Release is exact; cancel is idempotent via ACTIVE to RELEASED.
-- **D-006 Allocation: warehouse with the most available stock that fits the whole line; ties to the lowest row id; no split.** Cost: may reject an order that total stock across warehouses could cover.
-- **D-007 Default locking: pessimistic** (`oims.reservation.strategy=pessimistic`); optimistic (`@Version` + bounded retry) is the alternative. Measured (pool 10, 100 threads vs 10 units, single runs): both reserved exactly 10, rejected 90, failed 0, never oversold. Race time ~95-107 ms pessimistic vs ~116-117 ms optimistic, within noise. Not yet measured: pool 100, fewer retries, sustained load (Day 4).
-- - Why pessimistic: it queues instead of retrying, and rows locked in sorted id order cannot deadlock. Cost: locks rows it may not use.
-- **D-008 Multi-instance expiry: per-order row lock + re-check, no ShedLock.** Second instance finds the order already canceled and does nothing. Cost: instances duplicate the scan of expired ids.
-- **D-009 (superseded) `customerId` comes from the JWT subject; no body field required; one sent in the body is ignored.**
-- **D-010 Price snapshot on order lines.** Later price changes must not alter past orders.
-- **D-011 Optional `Idempotency-Key`, unique column.** Replay returns 200 with the original order; concurrent duplicate returns 409. Cost: replay does not compare request bodies.
-- **D-012 RFC 7807 errors:** 400 validation, 404 missing, 409 conflict/illegal transition, 422 business rule.
-- **D-013 Status endpoint restricted to WAREHOUSE_OPS/ADMIN.** Cost: PAID can still be set without payment evidence.
-- **D-014 Embedded Tomcat, file-based H2.** Allows two instances on one DB for the expiry demo.
-- **D-015 Out-of-stock orders are saved as FAILED, then the API returns 422.** Audit trail. Cost: failed attempts create rows.
-- **D-016 Cancellation locks the order row first, then stock rows in id order.** Cancel twice returns 200 with the same result. Late payment is rejected (422) even before the job runs.
-- **D-017 JWT resource server, HS256 shared secret, roles from a `roles` claim.** No IdP in the brief. Dev-only `/api/dev/token` (flag `oims.security.dev-tokens`).
-- **D-018 Another customer's order returns 404, not 403.** Prevents probing for order ids.
-- **D-019 `AccessDeniedException` mapped to 403 in the global handler.** Otherwise, the catch-all returns 500.
-- **D-020 Events via Spring `@TransactionalEventListener(AFTER_COMMIT)`, in-process.** Brief requires "learn about changes via events" but names no broker or guarantee. A rollback emits nothing. Cost: see debt.
-- **D-021 Hikari pool 30 (configurable via `DB_POOL`).** Load test on order placement, 100 users, one laptop (app, load generator and H2 share the CPU):
-- - pool 10: ~4,070 req/s, p50 17.8-21.3 ms, p99 86-96 ms;
-- - pool 30: 4,817 req/s, p50 18.2, p99 56 ms;
-- - pool 50: 4,632 req/s, p50 18.5, p99 65 ms.
-- - p50 was flat and CPU was at 0% idle in every run, so CPU saturation, not the pool, is the first bottleneck.
-- **D-022 Load test baseline (item 9).** 20 users: 4,818 req/s, p50 2.8, p95 11.9, p99 23.5 ms, all 201. Throughput stays ~4,000-4,800 req/s from 20 to 200 users while p50 grows with users (2.8 to 38 ms), so the system saturates early and extra users only queue.
-- **D-023 With 100% of traffic on one product's stock rows (50 users), throughput fell about 27% (4,763 to 3,472 req/s) and p99 was no worse (37.8 vs 51.4 ms). Pessimistic locking holds up under a hot row at this scale.
 
-## Proposed
-(none open, the outbox upgrade for D-020 is listed under debt)
+- **D-001 Boot 3.5.x, not 4.x**: brief says 3.x; Boot 4 has breaking changes. Cons: hand-build skeleton.
+- **D-002 Schema in `schema.sql`, Hibernate `validate`**: explicit, reviewable DB constraints (`reserved <= on_hand`). Cons: manual upkeep; Flyway in production.
+- **D-003 Transitions enforced in `Order.transitionTo()`**: one table of allowed transitions. Cannot be bypassed by repository updates. Cons: no per-transition hooks.
+- **D-004 Timestamps are `TIMESTAMP WITH TIME ZONE`**: Hibernate 6 maps `Instant` to it; plain TIMESTAMP failed validation.
+- **D-005 Stock = `on_hand` + `reserved` counters plus reservation rows**: release is exact; cancel is idempotent via ACTIVE to RELEASED.
+- **D-006 Allocation: warehouse with the most available stock that fits the whole line**: easy to reason from the brief. No split line. Could fragment stock across warehouses.
+- **D-007 Default locking: pessimistic (`@Transactional`/`SELECT ... FOR UPDATE ORDER BY id`)**: reliable (oversell 0, window retries). `oims.reservation.strategy=optimistic` is the alternative; uses bounded retry around `@Version`. Cons: pess throughput stronger under load; optimistic can retry heavily.
+- **D-008 Events: AFTER_COMMIT via Spring events**: simple and correct after commit. Not durable (server crash after commit loses an event). Upgrade path: transactional outbox or message broker.
+- **D-009 Expiry: list expired IDs then lock/recheck each in a new transaction**: safe across app instances; prevents double-release. Cons: two-phase scan.
+- **D-010 Spring Security JWT resource server**: roles from a `roles` claim. Dev token endpoint under local/demo only. Cons: shared secret.
+- **D-011 Identity: `customerId` comes from JWT subject** (supersedes the body field): body value is ignored.
+- **D-012 “Auditable” means fixed timestamp + actor plus changes made** (not full event sourcing).
+- **D-013 API errors use ProblemDetail + stable error codes**: clients can branch reliably.
+- **D-014 Validation: Bean Validation + line-level checks**: body/field errors are mapped consistently.
+- **D-015 Robust order ID sequence**: seeded above 1,000; explicit IDs avoid H2 sequence collisions on seed rows.
+- **D-016 Cancel stock updates are ordered by reservation/stock ID**: fixed locking order; avoids deadlocks. Late payment is rejected even before the expiry job runs.
+- **D-017 JWT resource server uses shared secret, roles from a `roles` claim**: no IdP in the brief. `/api/dev/token` (local/demo profile) convenience only.
+- **D-018 Hikari maximum-pool-size default 30, env DB_POOL override**: enough connections for load test.
+- **D-019 Async event notification uses bounded `ThreadPoolTaskExecutor`** (core 2/max 4, queue 1000, `CallerRunsPolicy`): keeps slow notification off request latency; `oims.events.async=false` is available for synchronous mode. Cons: back-pressure can surface as request latency under saturation.
+- **D-020 Events via Spring `@TransactionalEventListener(AFTER_COMMIT)`, in-process**: the brief requires “learn about changes via events” but makes no broker or guarantee requirement. Cons: non-durable.
+- **D-021 Hikari pool 30 (`DB_POOL`), load test 100 users, 1000 iterations, DB pool 30**.
+- **D-022 `ddl-auto=validate` and H2 file mode**: schema controlled by `schema.sql`; file survives app restarts.
+- **D-023 Item 9 partial fix: JPA sequence allocation size 1 and explicit sequence seeding**: setting the sequence to 1000 removed collision with seeded rows.
+- **D-024 Reports use plain SQL (`JdbcTemplate`)**: aggregation is simpler and more explicit.
+- **D-025 Load baseline**: 20 users, 100 iterations, 5 s think time. Throughput and latency recorded in load-test evidence.
+- **D-026 Load behaviour**: bottleneck under higher concurrency is CPU/DB contention rather than connection starvation.
+- **D-027 Lock strategy evidence**: pessimistic locking remains the default; optimistic locking is available but retries under contention.
 
+## Technical debt
 
-## Technical Debt
-- OpenAPI declares a bearer scheme, but error responses (400/403/404/409/422) still show "Undocumented"; fix with one `OpenApiCustomizer`.
-- Idempotency ignores body changes (D-011).
-- No correlation id in logs/errors (Day 4).
-- `setOnHand` is absolute; concurrent edits give 409. Prefer deltas.
-- Stock is never consumed: reservations stay ACTIVE after SHIPPED, so `on_hand` never decreases.
-- Expiry sweeps 100 orders per tick; a backlog drains over several ticks.
-- Two-instance expiry safety is proven with threads in one JVM, not two separate JVMs.
-- Events are non-durable: if the JVM dies after commit and before the listener runs, the event is lost. No retry, dead-letter or broker. Planned fix: transactional outbox + poller + idempotent consumers.
-- Listeners run synchronously on the request thread, so a slow downstream slows the HTTP call (Day 5 drill; fix `@Async` or outbox).
-- Only a notification listener exists; billing and shipping would be more listeners.
-- Dev token endpoint is unauthenticated: anyone can mint an ADMIN token. Must be off outside local/demo.
-- HS256 shared secret; no issuer/audience validation, no revocation, no refresh.
-- No `GET /api/orders` ("my orders") listing.
-- H2 console, Swagger and actuator health are open without a token.
-- **Item 9 fix is partial.** The first bottleneck is CPU per request (0% idle, app JVM ~660%). Raising the pool did not fix it. Not done: profiling (thread dumps or IntelliJ profiler) and reducing per-request work. Candidates, unmeasured: JWT signature validation per request, Hibernate flush/dirty checking, JSON serialisation, H2 in the same JVM.
-- **Concurrent retries with one Idempotency-Key can return an error.** In the drill, 19 of 20 simultaneous retries failed with 'DataIntegrityViolation' (409 to the client), one order was created and stock reserved once. 
-- - Fix designed: catch the violation and return the winner's order.
+- Events are non-durable. If the JVM dies after commit and before the listener runs, the event is lost. No retry, dead-letter or broker. Fix: transactional outbox + idempotent consumers.
+- Dev token endpoint is for local/demo only and must not be enabled outside that environment.
+- JWT uses a shared HMAC secret. Production should use an external identity provider / asymmetric keys and key rotation.
+- Idempotency currently prevents duplicate orders through a unique constraint, but concurrent requests with the same key can cause losing requests to fail rather than replay the winner’s order.
+- `DataIntegrityViolationException` handling should return the already-created order for an existing idempotency key.
+- Stock is reserved but not yet consumed on shipment; reservation state transitions need to be completed for the full lifecycle.
+- Item 9 is only partially addressed. Sequence collisions were fixed, but the database/seed strategy should be hardened further.
+- Failure drills and performance/load evidence should continue to be kept alongside `DRILLS.md` and the load-test outputs.
+- OpenAPI documentation is generated from the application and stored under `docs/openapi.yaml`; keep the exported specification in sync with API changes.

@@ -1,0 +1,873 @@
+openapi: 3.1.0
+info:
+  title: Order & Inventory Service
+  version: "0.1"
+servers:
+- url: http://localhost:8080
+  description: Generated server url
+security:
+- bearerAuth: []
+paths:
+  /api/stock/{warehouseId}/{productId}:
+    put:
+      tags:
+      - stock-controller
+      operationId: setOnHand
+      parameters:
+      - name: warehouseId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdjustStockRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/StockView"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/products:
+    get:
+      tags:
+      - product-controller
+      operationId: list
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductView"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+    post:
+      tags:
+      - product-controller
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductView"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/orders:
+    post:
+      tags:
+      - order-controller
+      operationId: create_1
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaceOrderBody"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/orders/{id}/status:
+    post:
+      tags:
+      - order-controller
+      operationId: changeStatus
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusChangeRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/orders/{id}/cancel:
+    post:
+      tags:
+      - order-controller
+      operationId: cancel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/dev/token:
+    post:
+      tags:
+      - dev-token-controller
+      operationId: issue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/stock:
+    get:
+      tags:
+      - stock-controller
+      operationId: list_1
+      parameters:
+      - name: productId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockView"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/reports/top-products:
+    get:
+      tags:
+      - report-controller
+      operationId: topProducts
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopProductRow"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/reports/low-stock:
+    get:
+      tags:
+      - report-controller
+      operationId: lowStock
+      parameters:
+      - name: threshold
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 5
+      - name: warehouseId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LowStockRow"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+  /api/orders/{id}:
+    get:
+      tags:
+      - order-controller
+      operationId: get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Validation failed (body has an errors map)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "401":
+          description: "Missing, invalid or expired token"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "403":
+          description: Authenticated but role not allowed
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "404":
+          description: Resource not found (or not yours)
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "409":
+          description: Illegal state transition or concurrent modification
+          content:
+            application/problem+json:
+              schema:
+                type: object
+        "422":
+          description: "Business rule violated (unknown product, insufficient stock)"
+          content:
+            application/problem+json:
+              schema:
+                type: object
+components:
+  schemas:
+    AdjustStockRequest:
+      type: object
+      properties:
+        onHand:
+          type: integer
+          format: int32
+          minimum: 0
+    StockView:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        warehouseId:
+          type: integer
+          format: int64
+        productId:
+          type: integer
+          format: int64
+        onHand:
+          type: integer
+          format: int32
+        reserved:
+          type: integer
+          format: int32
+        available:
+          type: integer
+          format: int32
+    CreateProductRequest:
+      type: object
+      properties:
+        sku:
+          type: string
+          maxLength: 64
+          minLength: 0
+        name:
+          type: string
+          maxLength: 255
+          minLength: 0
+        price:
+          type: number
+          minimum: 0.00
+      required:
+      - name
+      - price
+      - sku
+    ProductView:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sku:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+    Line:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+        quantity:
+          type: integer
+          format: int32
+          maximum: 10000
+          minimum: 1
+      required:
+      - productId
+    PlaceOrderBody:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/Line"
+          maxItems: 50
+          minItems: 0
+      required:
+      - lines
+    LineView:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+        quantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: number
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customerId:
+          type: string
+        status:
+          type: string
+          enum:
+          - CREATED
+          - RESERVED
+          - PAID
+          - SHIPPED
+          - DELIVERED
+          - CANCELLED
+          - FAILED
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        total:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineView"
+    StatusChangeRequest:
+      type: object
+      properties:
+        target:
+          type: string
+          enum:
+          - CREATED
+          - RESERVED
+          - PAID
+          - SHIPPED
+          - DELIVERED
+          - CANCELLED
+          - FAILED
+      required:
+      - target
+    TokenRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+          minLength: 1
+        roles:
+          type: array
+          items:
+            type: string
+          minItems: 1
+      required:
+      - roles
+      - subject
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        type:
+          type: string
+        expiresInSeconds:
+          type: integer
+          format: int64
+    TopProductRow:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+        sku:
+          type: string
+        name:
+          type: string
+        units:
+          type: integer
+          format: int64
+        revenue:
+          type: number
+        orders:
+          type: integer
+          format: int64
+    LowStockRow:
+      type: object
+      properties:
+        warehouseCode:
+          type: string
+        warehouseName:
+          type: string
+        productId:
+          type: integer
+          format: int64
+        sku:
+          type: string
+        productName:
+          type: string
+        onHand:
+          type: integer
+          format: int32
+        reserved:
+          type: integer
+          format: int32
+        available:
+          type: integer
+          format: int32
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
